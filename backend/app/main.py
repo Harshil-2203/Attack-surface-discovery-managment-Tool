@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.modules.subdomain.engine import run_subdomain_scan
 
 app = FastAPI()
 
@@ -22,3 +23,8 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "Backend is healthy"}
+
+@app.get("/scan/{domain}")
+def scan_domain(domain: str):
+    results = run_subdomain_scan(domain)
+    return results
