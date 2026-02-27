@@ -67,13 +67,13 @@ function App() {
     setMappingResult(null);
 
     try {
-      const response = await axios.get(`http://localhost:8001/scan/${domain}`);
+      const response = await axios.get(`http://localhost:8000/scan/${domain}`);
       setResults(response.data);
       
       // Automatically run ML mapping after scan
       setMappingLoading(true);
       try {
-        const mappingResp = await axios.post('http://localhost:8001/map', {
+        const mappingResp = await axios.post('http://localhost:8000/map', {
           domain,
           subdomains: response.data.subdomains,
         });
@@ -94,7 +94,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-black text-green-400 p-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="w-full">
         <h1 className="text-4xl font-bold text-center mb-8">
           AI Driven Attack Surface Discovery & Management Tool
         </h1>
@@ -308,7 +308,7 @@ function App() {
                   clusters={mappingResult.clusters}
                   onSave={async (mapping) => {
                     try {
-                      await axios.post('http://localhost:8001/save-mapping', {
+                      await axios.post('http://localhost:8000/save-mapping', {
                         domain,
                         mapping
                       });

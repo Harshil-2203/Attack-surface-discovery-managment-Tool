@@ -1,289 +1,340 @@
-import { useEffect, useRef, useState } from 'react';
-import Cytoscape from 'cytoscape';
-import COSEBilkent from 'cytoscape-cose-bilkent';
+import { useEffect, useRef, useState } from "react";
+import Cytoscape from "cytoscape";
+import COSEBilkent from "cytoscape-cose-bilkent";
 
 Cytoscape.use(COSEBilkent);
 
-export default function GraphViewer({ domain, subdomains, clusters, onSave }) {
+export default function GraphViewer({ domain, clusters, onSave }) {
   const containerRef = useRef(null);
   const cyRef = useRef(null);
-  const initializedClustersRef = useRef(null);
+
   const [selectedNode, setSelectedNode] = useState(null);
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [editedLabel, setEditedLabel] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [expandedCluster, setExpandedCluster] = useState(null);
+  const [clusterNames, setClusterNames] = useState({});
 
-  if (!clusters || Object.keys(clusters).length === 0) {
-    return (
-      <div className="flex flex-col gap-4 bg-gray-900 p-4 rounded border border-gray-700">
-        <div className="h-96 bg-black rounded border border-gray-700 flex items-center justify-center">
-          <p className="text-gray-400">No cluster data available. Please run ML mapping first.</p>
-        </div>
-      </div>
-    );
-  }
+  // Generate meaningful category names from subdomains
+  const generateCategoryName = (subdomains) => {
+    if (!subdomains || subdomains.length === 0) return "Miscellaneous";
 
-useEffect(() => {
-  if (!containerRef.current || !clusters) return;
+    const keywords = {
+      api: ["api", "v1", "v2", "v3", "rest", "graphql", "endpoint"],
+      email: ["mail", "smtp", "pop", "imap", "email"],
+      admin: ["admin", "panel", "dashboard", "management", "console", "backend"],
+      development: ["dev", "development", "staging", "stage", "test", "qa", "uat", "sandbox"],
+      web: ["www", "web", "site", "pages", "app", "application"],
+      cdn: ["cdn", "cache", "static", "assets", "media"],
+      database: ["db", "database", "sql", "mysql", "postgres", "mongodb"],
+      security: ["sec", "security", "firewall", "waf", "vpn"],
+      monitoring: ["monitor", "analytics", "logs", "metrics", "grafana", "prometheus"],
+      messaging: ["msg", "chat", "queue", "kafka", "rabbitmq"],
+    };
 
-  // Destroy safely if exists
-  if (cyRef.current) {
-    cyRef.current.destroy();
-    cyRef.current = null;
-  }
+    const prefixCounts = {};
+    const keywordMatches = { ...Object.fromEntries(Object.keys(keywords).map(k => [k, 0])) };
 
-  const nodes = [];
-  const edges = [];
+    // Extract prefixes and count keyword matches
+    subdomains.slice(0, 20).forEach((sub) => {
+      const parts = sub.split(".")[0].toLowerCase();
 
-  // Root
-  nodes.push({
-    data: { id: domain, label: domain, type: 'root' }
-  });
-
-  Object.entries(clusters).forEach(([groupId, subs]) => {
-    const groupNode = `group_${groupId}`;
-
-    nodes.push({
-      data: { id: groupNode, label: `Cluster ${groupId}`, type: 'group' }
-    });
-
-    edges.push({
-      data: { source: domain, target: groupNode }
-    });
-
-    subs.forEach((sub) => {
-      nodes.push({
-        data: { id: sub, label: sub, type: 'subdomain', group: groupId }
+      // Count keyword matches
+      Object.entries(keywords).forEach(([category, keys]) => {
+        if (keys.some((key) => parts.includes(key))) {
+          keywordMatches[category]++;
+        }
       });
 
-      edges.push({
-        data: { source: groupNode, target: sub }
-      });
+      // Count prefix occurrences
+      prefixCounts[parts] = (prefixCounts[parts] || 0) + 1;
     });
-  });
 
-  const cy = Cytoscape({
-    container: containerRef.current,
-    elements: [...nodes, ...edges],
-    style: [
-      {
-        selector: 'node',
-        style: {
-          label: 'data(label)',
-          'text-valign': 'center',
-          'text-halign': 'center',
-          'background-color': '#8b5cf6',
-          color: '#fff'
-        }
-      },
-      {
-        selector: 'node[type="root"]',
-        style: { 'background-color': '#10b981' }
-      },
-      {
-        selector: 'node[type="group"]',
-        style: { 'background-color': '#3b82f6' }
-      },
-      {
-        selector: 'edge',
-        style: {
-          'line-color': '#666',
-          width: 2
-        }
-      }
-    ],
-    layout: {
-      name: 'cose-bilkent',
-      animate: false,
-      fit: true,
-      padding: 30
+    // Find dominant keyword
+    const topKeyword = Object.entries(keywordMatches).reduce((a, b) =>
+      b[1] > a[1] ? b : a
+    )[0];
+
+    // Map keywords to categories
+    const categoryMap = {
+      api: "API Services",
+      email: "Email Services",
+      admin: "Admin Panels",
+      development: "Development/Staging",
+      web: "Web Services",
+      cdn: "CDN & Media",
+      database: "Database Services",
+      security: "Security & VPN",
+      monitoring: "Monitoring & Logs",
+      messaging: "Messaging & Queue",
+    };
+
+    if (keywordMatches[topKeyword] > 0) {
+      return categoryMap[topKeyword];
     }
-  });
 
-  cyRef.current = cy;
+    // Fallback: use most common prefix
+    const topPrefix = Object.entries(prefixCounts).reduce((a, b) =>
+      b[1] > a[1] ? b : a
+    )[0];
 
-  cy.on('tap', (event) => {
-    const node = event.target;
-    if (node.isNode()) {
-      setSelectedNode(node.data());
-    } else {
-      setSelectedNode(null);
+    return topPrefix.charAt(0).toUpperCase() + topPrefix.slice(1) + " Services";
+  };
+
+  // Generate and cache category names when clusters change
+  useEffect(() => {
+    if (clusters) {
+      const names = {};
+      Object.entries(clusters).forEach(([clusterId, subs]) => {
+        names[clusterId] = generateCategoryName(subs);
+      });
+      setClusterNames(names);
     }
-  });
+  }, [clusters]);
 
-  return () => {
+  // 🚀 GRAPH INITIALIZATION
+  useEffect(() => {
+    if (!containerRef.current || !clusters || !domain) return;
+
+    // Destroy safely if exists
     if (cyRef.current) {
       cyRef.current.destroy();
       cyRef.current = null;
     }
-  };
 
-}, [clusters, domain]);     
-  const handleMoveToGroup = (newGroup) => {
-    if (!selectedNode || !newGroup) return;
-    if (cyRef.current) {
-      const node = cyRef.current.$(`#${selectedNode.id}`);
-      node.data('group', newGroup);
-      setSelectedNode({ ...selectedNode, group: newGroup });
-    }
-  };
+    const nodes = [];
+    const edges = [];
 
-  const handleDeleteNode = () => {
-    if (!selectedNode || selectedNode.type === 'root') return;
-    if (cyRef.current) {
-      const node = cyRef.current.$(`#${selectedNode.id}`);
-      cyRef.current.remove(node);
-      setSelectedNode(null);
-    }
-  };
+    // Root Node
+    nodes.push({
+      data: { id: domain, label: domain, type: "root" },
+    });
 
-  const handleEditLabel = () => {
-    if (!selectedNode) return;
-    setEditedLabel(selectedNode.label || selectedNode.id);
-    setEditMode(true);
-  };
+    // Cluster Nodes
+    Object.entries(clusters).forEach(([clusterId, subs]) => {
+      const groupNode = `group_${clusterId}`;
+      const categoryName = clusterNames[clusterId] || `Category ${clusterId}`;
 
-  const handleSaveLabel = () => {
-    if (!selectedNode || !editedLabel.trim()) return;
-    if (cyRef.current) {
-      const node = cyRef.current.$(`#${selectedNode.id}`);
-      node.data('label', editedLabel.trim());
-      setSelectedNode({ ...selectedNode, label: editedLabel.trim() });
-      setEditMode(false);
-      setEditedLabel('');
-    }
-  };
+      nodes.push({
+        data: {
+          id: groupNode,
+          label: `${categoryName}\n(${subs.length})`,
+          type: "group",
+          category: clusterId,
+          categoryName: categoryName,
+          subdomain_count: subs.length,
+        },
+      });
 
-  const handleCancelEdit = () => {
-    setEditMode(false);
-    setEditedLabel('');
-  };
+      edges.push({
+        data: { source: domain, target: groupNode },
+      });
+    });
 
+    const cy = Cytoscape({
+      container: containerRef.current,
+      elements: [...nodes, ...edges],
+    style: [
+  {
+    selector: "node",
+    style: {
+      label: "data(label)",
+      "text-wrap": "wrap",
+      "text-max-width": "140px",
+      "text-valign": "center",
+      "text-halign": "center",
+      "background-color": "#8b5cf6",
+      color: "#ffffff",
+      "font-size": 13,
+      "padding": "12px",
+      "shape": "round-rectangle",
+      width: "label",
+      height: "label",
+      "min-width": "120px",
+      "min-height": "60px",
+    },
+  },
+  {
+    selector: 'node[type="root"]',
+    style: {
+      "background-color": "#10b981",
+      "font-size": 15,
+      "font-weight": "bold",
+      "min-width": "160px",
+      "min-height": "80px",
+    },
+  },
+  {
+    selector: 'node[type="group"]',
+    style: {
+      "background-color": "#3b82f6",
+      "border-width": 2,
+      "border-color": "#60a5fa",
+      "font-size": 14,
+      "padding": "16px",
+      "min-width": "180px",
+      "min-height": "90px",
+    },
+  },
+  {
+    selector: "node:selected",
+    style: {
+      "background-color": "#fbbf24",
+      "border-width": 3,
+      "border-color": "#f59e0b",
+    },
+  },
+  {
+    selector: "edge",
+    style: {
+      "line-color": "#666",
+      width: 2,
+      "target-arrow-color": "#666",
+      "target-arrow-shape": "triangle",
+      "curve-style": "bezier",
+    },
+  },
+],
+      layout: {
+        name: "cose-bilkent",
+        animate: false,
+        fit: true,
+        padding: 50,
+      },
+    });
+
+    cyRef.current = cy;
+
+    // Click Handler
+    cy.on("tap", (event) => {
+      const node = event.target;
+      if (node.isNode()) {
+        const nodeData = node.data();
+
+        if (nodeData.type === "group") {
+          setExpandedCluster(nodeData.category);
+          setModalOpen(true);
+        }
+
+        setSelectedNode(nodeData);
+      } else {
+        setSelectedNode(null);
+      }
+    });
+
+    return () => {
+      if (cyRef.current) {
+        cyRef.current.destroy();
+        cyRef.current = null;
+      }
+    };
+  }, [clusters, domain, clusterNames]);
+
+  // Save mapping
   const handleSave = async () => {
     if (!cyRef.current) return;
+
     const mapping = {};
     cyRef.current.nodes().forEach((node) => {
       const data = node.data();
-      if (data.type === 'subdomain') {
-        mapping[data.id] = data.group || 'ungrouped';
+      if (data.type === "subdomain") {
+        mapping[data.id] = data.group || "ungrouped";
       }
     });
-    await onSave(mapping);
+
+    if (onSave) await onSave(mapping);
   };
 
-  const availableGroups = clusters ? Object.keys(clusters) : [];
+  if (!clusters || Object.keys(clusters).length === 0) {
+    return (
+      <div className="bg-gray-900 p-6 rounded border border-gray-700 text-gray-400">
+        No cluster data available.
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 bg-gray-900 p-4 rounded border border-gray-700">
-      <div 
-        className="bg-black rounded border border-gray-700" 
+      {/* Graph Container */}
+      <div
         ref={containerRef}
-        style={{ 
-          position: 'relative',
-          width: '100%',
-          height: '384px',
-          backgroundColor: '#000000 !important'
+        style={{
+          width: "100%",
+          height: "600px",
+          backgroundColor: "#000000",
         }}
-      >
-        {!isInitialized && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black">
-            <p className="text-gray-400">Loading graph...</p>
+        className="rounded border border-gray-700"
+      />
+
+      {/* Modal */}
+      {modalOpen &&
+        expandedCluster !== null &&
+        clusters?.[expandedCluster] && (
+          <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm bg-black/20">
+            <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 max-w-2xl w-full mx-4 max-h-96 overflow-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-green-400">
+                  {clusterNames[expandedCluster] || `Category ${expandedCluster}`} — Subdomains ({clusters[expandedCluster].length})
+                </h2>
+                <button
+                  onClick={() => setModalOpen(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {clusters[expandedCluster].map((subdomain, index) => (
+                  <div
+                    key={index}
+                    className="bg-gray-800 p-3 rounded border border-gray-700 hover:border-cyan-400"
+                  >
+                    <p className="text-cyan-400 font-mono text-sm">
+                      {subdomain}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <button
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         )}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-gray-800 p-3 rounded">
-          <h4 className="font-semibold text-cyan-400 mb-2">Selected Node</h4>
-          {selectedNode ? (
-            <div className="text-sm text-gray-300 space-y-2">
-              {editMode ? (
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={editedLabel}
-                    onChange={(e) => setEditedLabel(e.target.value)}
-                    className="w-full px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-gray-300"
-                    placeholder="Enter new label"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSaveLabel}
-                      className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs font-semibold text-white"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={handleCancelEdit}
-                      className="px-2 py-1 bg-gray-600 hover:bg-gray-700 rounded text-xs font-semibold text-white"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <p className="text-yellow-400 font-mono">{selectedNode.id}</p>
-                  <p className="text-gray-400">Type: {selectedNode.type}</p>
-                  {selectedNode.type === 'subdomain' && (
-                    <div className="mt-2 space-y-2">
-                      <div>
-                        <label className="text-gray-300 text-xs">Move to Group:</label>
-                        <select
-                          value={selectedNode.group || ''}
-                          onChange={(e) => handleMoveToGroup(e.target.value)}
-                          className="w-full px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-gray-300 mt-1"
-                        >
-                          <option value="">-- Select Group --</option>
-                          {availableGroups.map((g) => (
-                            <option key={g} value={g}>
-                              Cluster {g}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleEditLabel}
-                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs font-semibold text-white"
-                        >
-                          Edit Label
-                        </button>
-                        <button
-                          onClick={handleDeleteNode}
-                          className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs font-semibold text-white"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm">Click a node to select</p>
-          )}
-        </div>
 
-        <div className="bg-gray-800 p-3 rounded">
-          <h4 className="font-semibold text-green-400 mb-2">Actions</h4>
-          <button
-            onClick={handleSave}
-            className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-semibold text-white"
-          >
-            Save Mapping
-          </button>
-          <p className="text-xs text-gray-500 mt-2">
-            Click nodes to select, use dropdown to re-group. Click Save Mapping to persist.
+      {/* Info Panel */}
+      <div className="bg-gray-800 p-3 rounded">
+        <h4 className="font-semibold text-cyan-400 mb-2">Selected Node</h4>
+        {selectedNode ? (
+          <div className="text-sm text-gray-300 space-y-1">
+            <p className="text-yellow-400 font-mono">
+              {selectedNode.categoryName || selectedNode.id}
+            </p>
+            <p>Type: {selectedNode.type}</p>
+            {selectedNode.type === "group" && (
+              <p>Subdomains: {selectedNode.subdomain_count}</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm">
+            Click a category to view subdomains
           </p>
-        </div>
+        )}
       </div>
 
-      <div className="text-xs text-gray-500">
-        <p>Right-click and drag to pan • Scroll to zoom • Click nodes to select and edit</p>
-        <p>ML generates initial clusters • Manually move, edit labels, or delete nodes • Save changes</p>
+      {/* Save Button */}
+      <div className="bg-gray-800 p-3 rounded">
+        <button
+          onClick={handleSave}
+          className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-semibold text-white"
+        >
+          Save Mapping
+        </button>
       </div>
     </div>
   );
