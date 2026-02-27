@@ -11,6 +11,7 @@ from .asn import get_subdomains_from_asn
 from .github import get_subdomains_from_github
 from .validator import validate_subdomains
 from .mapper import analyze_relationships
+from .meta import fetch_meta_for_subdomains
 
 
 async def run_with_timeout(func, domain, timeout=20):
@@ -58,7 +59,8 @@ async def run_subdomain_scan(domain: str):
         "alive_count": len(alive_subdomains),
         "sources": {k: len(v) for k, v in source_results.items()},
         "subdomains": alive_subdomains,
-        "mapping": mapping_analysis
+        "mapping": mapping_analysis,
+        "meta": await fetch_meta_for_subdomains(alive_subdomains)
     }
 
     # 🔥 Store in Cache

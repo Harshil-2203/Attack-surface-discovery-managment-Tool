@@ -4,7 +4,7 @@ import COSEBilkent from "cytoscape-cose-bilkent";
 
 Cytoscape.use(COSEBilkent);
 
-export default function GraphViewer({ domain, clusters, onSave }) {
+export default function GraphViewer({ domain, clusters, onSave, meta }) {
   const containerRef = useRef(null);
   const cyRef = useRef(null);
 
@@ -283,16 +283,26 @@ export default function GraphViewer({ domain, clusters, onSave }) {
               </div>
 
               <div className="space-y-2">
-                {clusters[expandedCluster].map((subdomain, index) => (
-                  <div
-                    key={index}
-                    className="bg-gray-800 p-3 rounded border border-gray-700 hover:border-cyan-400"
-                  >
-                    <p className="text-cyan-400 font-mono text-sm">
-                      {subdomain}
-                    </p>
-                  </div>
-                ))}
+                {clusters[expandedCluster].map((subdomain, index) => {
+                  const m = meta && meta[subdomain] ? meta[subdomain] : null;
+                  return (
+                    <div
+                      key={index}
+                      className="bg-gray-800 p-3 rounded border border-gray-700 hover:border-cyan-400"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-cyan-400 font-mono text-sm">{subdomain}</p>
+                          <p className="text-sm text-gray-300">{m && m.title ? m.title : ''}</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm text-green-300">{m ? (m.status_code || m.error) : '—'}</div>
+                          <div className="text-xs text-gray-400">{m && m.final_url ? m.final_url : ''}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="mt-4">
