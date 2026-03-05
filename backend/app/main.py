@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.modules.subdomain.mapper import analyze_relationships
 from app.modules.subdomain.engine import run_subdomain_scan
-from app.modules.crawl.engine import run_crawl, _find_exe, _get_go_bin_paths
+from app.modules.crawl.engine import run_crawl
 
 # Windows: ProactorEventLoop required for subprocesses
 if sys.platform.startswith("win"):
