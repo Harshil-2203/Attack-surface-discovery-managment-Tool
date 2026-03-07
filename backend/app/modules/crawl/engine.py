@@ -1,39 +1,31 @@
 import subprocess
 import asyncio
 import os
-import sys
 from concurrent.futures import ThreadPoolExecutor
 
 _executor = ThreadPoolExecutor(max_workers=4)
 
-# Hardcoded since debug confirmed all three are here
 GO_BIN = r"C:\Users\LENOVO\go\bin"
 
 TOOL_PATHS = {
-    "gau":          os.path.join(GO_BIN, "gau.exe"),
-    "waybackurls":  os.path.join(GO_BIN, "waybackurls.exe"),
-    "katana":       os.path.join(GO_BIN, "katana.exe"),
+    "gau":         os.path.join(GO_BIN, "gau.exe"),
+    "waybackurls": os.path.join(GO_BIN, "waybackurls.exe"),
+    "katana":      os.path.join(GO_BIN, "katana.exe"),
 }
 
+_ENV = os.environ.copy()
+_ENV["PATH"] = GO_BIN + os.pathsep + _ENV.get("PATH", "")
 
-def _run_cmd(
-    tool: str,
-    args: list[str],
-    stdin_text: str | None = None,
-    timeout: int = 120,
-) -> list[str]:
-    """
-    Run a tool synchronously inside a thread.
-    Does NOT use CREATE_NO_WINDOW — that flag causes silent failures
-    when uvicorn uses ProactorEventLoop on Windows.
-    """
-    exe = TOOL_PATHS.get(tool)
-    if not exe or not os.path.isfile(exe):
-        print(f"[crawl] {tool} not found at {exe}")
+
+# ── gau: domain via stdin bytes (same approach that fixed waybackurls) ────────
+def _run_gau(domain: str, timeout: int = 180) -> list[str]:
+    exe = TOOL_PATHS["gau"]
+    if not os.path.isfile(exe):
+        print(f"[crawl] gau not found at {exe}")
         return []
 
-    cmd = [exe] + args
-    print(f"[crawl] Running: {tool} {' '.join(args)}")
+    cmd = [exe, "--subs", "--threads", "5"]
+    print(f"[crawl] gau cmd: {exe} --subs --threads 5 (domain via stdin)")
 
     try:
         proc = subprocess.Popen(
@@ -41,53 +33,119 @@ def _run_cmd(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            # NO creationflags — this is the key fix
+            env=_ENV,
         )
-        stdout, stderr = proc.communicate(
-            input=stdin_text,
+        stdout_bytes, stderr_bytes = proc.communicate(
+            input=(domain + "\n").encode("utf-8"),
             timeout=timeout,
         )
-        lines = [l.strip() for l in stdout.splitlines() if l.strip()]
-        if stderr.strip():
-            print(f"[crawl] {tool} stderr: {stderr[:300]}")
-        print(f"[crawl] {tool} → {len(lines)} URLs")
-        return lines
+        stdout = stdout_bytes.decode("utf-8", errors="ignore")
+        stderr = stderr_bytes.decode("utf-8", errors="ignore")
 
+        print(f"[crawl] gau exit={proc.returncode}")
+        if stderr.strip():
+            print(f"[crawl] gau stderr: {stderr[:800]}")
+
+        lines = [l.strip() for l in stdout.splitlines() if l.strip()]
+        print(f"[crawl] gau -> {len(lines)} URLs")
+        return lines
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.communicate()
-        print(f"[crawl] {tool} timed out after {timeout}s")
+        print(f"[crawl] gau timed out after {timeout}s")
         return []
     except Exception as e:
-        print(f"[crawl] {tool} error: {e}")
+        print(f"[crawl] gau error: {e}")
         return []
 
 
-async def _async_run(tool: str, args: list[str], stdin_text: str | None = None, timeout: int = 120) -> list[str]:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        _executor,
-        lambda: _run_cmd(tool, args, stdin_text, timeout)
-    )
+# ── waybackurls: write domain via stdin bytes directly (no shell, no echo) ────
+# waybackurls ONLY supports stdin — but we pass it via Popen stdin pipe directly
+def _run_waybackurls(domain: str, timeout: int = 120) -> list[str]:
+    exe = TOOL_PATHS["waybackurls"]
+    if not os.path.isfile(exe):
+        print(f"[crawl] waybackurls not found at {exe}")
+        return []
+
+    cmd = [exe]
+    print(f"[crawl] waybackurls cmd: {exe} (domain via stdin)")
+
+    try:
+        # Use Popen directly so we control stdin encoding precisely
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=_ENV,
+        )
+        # Write domain as raw bytes with Unix newline — avoids Windows echo quirks
+        stdout_bytes, stderr_bytes = proc.communicate(
+            input=(domain + "\n").encode("utf-8"),
+            timeout=timeout,
+        )
+        stdout = stdout_bytes.decode("utf-8", errors="ignore")
+        stderr = stderr_bytes.decode("utf-8", errors="ignore")
+
+        print(f"[crawl] waybackurls exit={proc.returncode}")
+        if stderr.strip():
+            print(f"[crawl] waybackurls stderr: {stderr[:800]}")
+
+        lines = [l.strip() for l in stdout.splitlines() if l.strip()]
+        print(f"[crawl] waybackurls -> {len(lines)} URLs")
+        return lines
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        print(f"[crawl] waybackurls timed out after {timeout}s")
+        return []
+    except Exception as e:
+        print(f"[crawl] waybackurls error: {e}")
+        return []
 
 
-# ── Individual tools ──────────────────────────────────────────────────────────
+# ── katana: unchanged — already working ──────────────────────────────────────
+def _run_katana(domain: str, timeout: int = 150) -> list[str]:
+    exe = TOOL_PATHS["katana"]
+    if not os.path.isfile(exe):
+        print(f"[crawl] katana not found at {exe}")
+        return []
+
+    target = domain if domain.startswith("http") else f"https://{domain}"
+    cmd = [exe, "-u", target, "-d", "3", "-silent", "-nc"]
+    print(f"[crawl] katana cmd: {' '.join(cmd)}")
+
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, env=_ENV,
+        )
+        print(f"[crawl] katana exit={proc.returncode}")
+        if proc.stderr.strip():
+            print(f"[crawl] katana stderr: {proc.stderr[:500]}")
+        lines = [l.strip() for l in proc.stdout.splitlines() if l.strip()]
+        print(f"[crawl] katana -> {len(lines)} URLs")
+        return lines
+    except subprocess.TimeoutExpired:
+        print(f"[crawl] katana timed out after {timeout}s")
+        return []
+    except Exception as e:
+        print(f"[crawl] katana error: {e}")
+        return []
+
+
+# ── Async wrappers ────────────────────────────────────────────────────────────
 
 async def run_gau(domain: str) -> list[str]:
-    # gau <domain> --subs --threads 5
-    return await _async_run("gau", ["--subs", "--threads", "5", domain], timeout=120)
-
+    return await asyncio.get_event_loop().run_in_executor(
+        _executor, lambda: _run_gau(domain))
 
 async def run_waybackurls(domain: str) -> list[str]:
-    # echo domain | waybackurls   →  pass domain via stdin
-    return await _async_run("waybackurls", [], stdin_text=domain + "\n", timeout=120)
-
+    return await asyncio.get_event_loop().run_in_executor(
+        _executor, lambda: _run_waybackurls(domain))
 
 async def run_katana(domain: str) -> list[str]:
-    target = domain if domain.startswith("http") else f"https://{domain}"
-    # katana -u <url> -d 3 -silent -nc
-    return await _async_run("katana", ["-u", target, "-d", "3", "-silent", "-nc"], timeout=150)
+    return await asyncio.get_event_loop().run_in_executor(
+        _executor, lambda: _run_katana(domain))
 
 
 # ── Main entry ────────────────────────────────────────────────────────────────
@@ -102,17 +160,17 @@ async def run_crawl(domain: str) -> dict:
     )
 
     all_urls = list(set(gau_urls + wayback_urls + katana_urls))
-    print(f"[crawl] ===== Done — unique URLs: {len(all_urls)} =====\n")
+    print(f"[crawl] ===== Done -- unique URLs: {len(all_urls)} =====\n")
 
     return {
-        "domain": domain,
+        "domain":       domain,
         "total_unique": len(all_urls),
         "sources": {
             "gau":         len(gau_urls),
             "waybackurls": len(wayback_urls),
             "katana":      len(katana_urls),
         },
-        "urls": all_urls,
+        "urls":       all_urls,
         "categories": _categorize(all_urls),
     }
 
@@ -133,7 +191,6 @@ def _categorize(urls: list[str]) -> dict:
         "password", "passwd", "secret", "token", "apikey", "api_key",
         "auth", "credential", "private", "backup", "config",
     ]
-
     for url in urls:
         u = url.lower()
         if u.endswith(".js") or ".js?" in u or ".js#" in u:
@@ -150,5 +207,4 @@ def _categorize(urls: list[str]) -> dict:
             buckets["endpoints"].append(url)
         else:
             buckets["other"].append(url)
-
     return {k: v for k, v in buckets.items() if v}
