@@ -12,6 +12,20 @@ export default function GraphViewer({ domain, clusters, onSave, meta }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [expandedCluster, setExpandedCluster] = useState(null);
   const [clusterNames, setClusterNames] = useState({});
+  const [copiedSub, setCopiedSub] = useState(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const handleCopySub = (sub) => {
+    navigator.clipboard.writeText(sub);
+    setCopiedSub(sub);
+    setTimeout(() => setCopiedSub(null), 1500);
+  };
+
+  const handleCopyAll = (subs) => {
+    navigator.clipboard.writeText(subs.join("\n"));
+    setCopiedAll(true);
+    setTimeout(() => setCopiedAll(false), 1500);
+  };
 
   // Generate meaningful category names from subdomains
   const generateCategoryName = (subdomains) => {
@@ -274,12 +288,20 @@ export default function GraphViewer({ domain, clusters, onSave, meta }) {
                 <h2 className="text-xl font-bold text-green-400">
                   {clusterNames[expandedCluster] || `Category ${expandedCluster}`} — Subdomains ({clusters[expandedCluster].length})
                 </h2>
-                <button
-                  onClick={() => setModalOpen(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
-                >
-                  ×
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleCopyAll(clusters[expandedCluster])}
+                    className="text-xs font-mono px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-green-700 text-gray-400 hover:text-green-400 rounded-lg transition-all"
+                  >
+                    {copiedAll ? "✓ Copied all" : "Copy all"}
+                  </button>
+                  <button
+                    onClick={() => setModalOpen(false)}
+                    className="text-gray-400 hover:text-white text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -288,14 +310,22 @@ export default function GraphViewer({ domain, clusters, onSave, meta }) {
                   return (
                     <div
                       key={index}
-                      className="bg-gray-800 p-3 rounded border border-gray-700 hover:border-cyan-400"
+                      className="group bg-gray-800 p-3 rounded border border-gray-700 hover:border-cyan-400 transition"
                     >
                       <div className="flex justify-between items-start">
-                        <div>
-                          <p className="text-cyan-400 font-mono text-sm">{subdomain}</p>
+                        <div className="flex-1 min-w-0 mr-2">
+                          <div className="flex items-center gap-2">
+                            <p className="text-cyan-400 font-mono text-sm truncate">{subdomain}</p>
+                            <button
+                              onClick={() => handleCopySub(subdomain)}
+                              className="shrink-0 text-xs font-mono text-gray-600 hover:text-green-400 opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              {copiedSub === subdomain ? "✓" : "copy"}
+                            </button>
+                          </div>
                           <p className="text-sm text-gray-300">{m && m.title ? m.title : ''}</p>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right shrink-0">
                           <div className="text-sm text-green-300">{m ? (m.status_code || m.error) : '—'}</div>
                           <div className="text-xs text-gray-400">{m && m.final_url ? m.final_url : ''}</div>
                         </div>

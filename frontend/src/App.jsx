@@ -4,10 +4,14 @@ import GraphViewer from "./GraphViewer";
 import MetaViewer from "./MetaViewer";
 import Sidebar from "./Sidebar";
 import CrawlViewer from "./CrawlViewer";
+import TargetManager, { saveRecent } from "./TargetManager";
 
 const API = "http://localhost:8000";
 
 function App() {
+  // ── Target (session) state ────────────────────────────────────────────────
+  const [targetData, setTargetData] = useState(null); // null = show TargetManager
+
   const [domain, setDomain] = useState("");
   const [viewMode, setViewMode] = useState("welcome");
 
@@ -25,6 +29,48 @@ function App() {
 
   const [error, setError] = useState("");
 
+  // ── Target ready callback ─────────────────────────────────────────────────
+  const handleTargetReady = async (data) => {
+    setTargetData(data);
+    const dom = data.meta.primary_domain || "";
+    setDomain(dom);
+
+    // Restore latest scan result if any
+    if (data.scans && data.scans.length > 0) {
+      const latest = data.scans[data.scans.length - 1];
+      setResults(latest);
+      setViewMode("list");
+
+      // Re-run mapping so graph is available
+      if (latest.subdomains && latest.subdomains.length > 0) {
+        setMappingLoading(true);
+        try {
+          const mapResp = await axios.post(`${API}/map`, {
+            domain: latest.domain || dom,
+            subdomains: latest.subdomains,
+          });
+          setMappingResult(mapResp.data.mapping);
+        } catch (e) {
+          console.error("Mapping restore failed", e);
+        } finally {
+          setMappingLoading(false);
+        }
+      }
+    }
+
+    // Restore latest crawl result if any
+    if (data.crawls && data.crawls.length > 0) {
+      setCrawlData(data.crawls[data.crawls.length - 1]);
+    }
+  };
+
+  // Show TargetManager until a target is selected/created
+  if (!targetData) {
+    return <TargetManager onReady={handleTargetReady} />;
+  }
+
+  const targetMeta = targetData.meta;
+
   // ── SCAN: fetches subdomains + meta together ────────────────────────────
   const handleScan = async () => {
     if (!domain.trim()) { setError("Please enter a domain"); return; }
@@ -41,6 +87,18 @@ function App() {
       const scanResp = await axios.get(`${API}/scan/${domain}`);
       const scanData = scanResp.data;
       setResults(scanData);
+
+      // Auto-save scan to target folder
+      if (targetMeta.target_folder) {
+        axios.post(`${API}/targets/save-scan`, {
+          folder: targetMeta.target_folder,
+          domain,
+          result: scanData,
+        }).then(r => {
+          // Update recent cache with new stats
+          saveRecent({ ...targetMeta, ...r.data });
+        }).catch(console.error);
+      }
 
       // Step 2: mapping for graph (runs concurrently after scan)
       setMappingLoading(true);
@@ -72,6 +130,15 @@ function App() {
     try {
       const resp = await axios.get(`${API}/crawl/${target.trim()}`);
       setCrawlData(resp.data);
+
+      // Auto-save crawl to target folder
+      if (targetMeta.target_folder) {
+        axios.post(`${API}/targets/save-crawl`, {
+          folder: targetMeta.target_folder,
+          domain: target.trim(),
+          result: resp.data,
+        }).then(r => saveRecent({ ...targetMeta, ...r.data })).catch(console.error);
+      }
     } catch (e) {
       setError("Crawl failed — check that gau, waybackurls and katana are installed.");
     } finally {
@@ -85,10 +152,25 @@ function App() {
     <div className="h-screen bg-black text-green-400 flex flex-col">
 
       {/* Header */}
-      <header className="px-10 pt-7 pb-5 border-b border-gray-800 bg-black shrink-0">
-        <h1 className="text-3xl font-extrabold text-center tracking-wider text-green-400">
-          Attack Surface Discovery & Management Tool
+      <header className="px-6 py-3 border-b border-gray-800 bg-black shrink-0 flex items-center justify-between">
+        <h1 className="font-mono text-sm font-bold tracking-widest text-green-400">
+          ASDMT
         </h1>
+        <div className="flex items-center gap-5 font-mono text-xs">
+          <span className="text-gray-700">OP: <span className="text-green-600">{targetMeta.analyst_name}</span></span>
+          <span className="text-gray-700">TARGET: <span className="text-yellow-500">{targetMeta.org_name}</span></span>
+          <span className="text-gray-700">DOMAIN: <span className="text-cyan-600">{targetMeta.primary_domain}</span></span>
+          <span className="text-gray-700">ID: <span className="text-gray-600 text-xs">{targetMeta.target_id}</span></span>
+          <span className="text-gray-700">SCANS: <span className="text-green-700">{targetMeta.scan_count || 0}</span></span>
+          <span className="text-gray-700">SUBS: <span className="text-green-700">{targetMeta.total_subdomains || 0}</span></span>
+          <span className="text-gray-700">URLs: <span className="text-green-700">{targetMeta.total_urls || 0}</span></span>
+          <button
+            onClick={() => { setTargetData(null); setResults(null); setCrawlData(null); setMappingResult(null); setViewMode("welcome"); }}
+            className="text-gray-700 hover:text-red-500 transition border border-gray-800 px-2 py-1 rounded text-xs font-mono"
+          >
+            ✕ Close Target
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -242,13 +324,41 @@ function StatCard({ title, value }) {
 }
 
 function SubdomainList({ subdomains }) {
+  const [copied, setCopied] = useState(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const handleCopy = (sub) => {
+    navigator.clipboard.writeText(sub);
+    setCopied(sub);
+    setTimeout(() => setCopied(null), 1500);
+  };
+  const handleCopyAll = () => {
+    navigator.clipboard.writeText(subdomains.join("\n"));
+    setCopiedAll(true);
+    setTimeout(() => setCopiedAll(false), 1500);
+  };
+
   return (
     <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl">
-      <h3 className="text-base font-semibold mb-4 text-green-400">Subdomain List</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-green-400">Subdomain List</h3>
+        <button
+          onClick={handleCopyAll}
+          style={{ padding: "4px 12px", background: "#111827", border: "1px solid #374151", borderRadius: 6, color: copiedAll ? "#4ade80" : "#6b7280", fontFamily: "monospace", fontSize: 11, cursor: "pointer" }}
+        >
+          {copiedAll ? "✓ Copied all" : `Copy all (${subdomains.length})`}
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[500px] overflow-y-auto">
         {subdomains.map((sub, i) => (
-          <div key={i} className="bg-gray-800 px-4 py-2.5 rounded-xl text-sm text-cyan-300 font-mono hover:bg-gray-700 cursor-pointer transition truncate">
-            {sub}
+          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#1f2937", padding: "8px 12px", borderRadius: 10 }}>
+            <span style={{ fontFamily: "monospace", fontSize: 13, color: "#67e8f9", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 6 }}>{sub}</span>
+            <button
+              onClick={() => handleCopy(sub)}
+              style={{ flexShrink: 0, fontFamily: "monospace", fontSize: 11, color: copied === sub ? "#4ade80" : "#4b5563", background: "none", border: "none", cursor: "pointer", padding: "0 4px" }}
+            >
+              {copied === sub ? "✓" : "copy"}
+            </button>
           </div>
         ))}
       </div>

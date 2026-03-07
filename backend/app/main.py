@@ -13,8 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.modules.crawl.engine import run_crawl
 from app.modules.subdomain.engine import run_subdomain_scan
 from app.modules.subdomain.mapper import analyze_relationships
+from app.routers import targets
 
 app = FastAPI(title="Attack Surface Discovery API")
+app.include_router(targets.router)
 
 # ── CORS — allow the Vite dev server (port 5173) ─────────────────────────────
 app.add_middleware(
