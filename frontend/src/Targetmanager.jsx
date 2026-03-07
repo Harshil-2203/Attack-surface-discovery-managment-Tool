@@ -2,7 +2,7 @@
 // Shown on every page load — lets user create new target or reopen existing one
 // Persists recent targets in localStorage so reloading never loses work
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
 const API = "http://localhost:8000";
@@ -416,20 +416,34 @@ function OpenTargetPanel({ onOpened, onBack, prefilledPath }) {
     if (!target) { setError("Enter a folder path"); return; }
     setLoading(true);
     setError("");
+    console.log("[ASDMT] Opening target:", target);
     try {
-      const res = await axios.post(`${API}/targets/open`, { folder: target });
+      const res = await axios.post(`${API}/targets/open`, { folder: target }, { timeout: 8000 });
+      console.log("[ASDMT] Open success:", res.data?.meta?.target_id);
       saveRecent(res.data.meta);
+      setLoading(false);
       onOpened(res.data);
     } catch (e) {
+      console.error("[ASDMT] Open failed:", e);
       setLoading(false);
-      setError(e.response?.data?.detail || "Could not open target — check the folder path is correct");
+      if (e.code === "ECONNABORTED" || e.message?.includes("timeout")) {
+        setError("Request timed out — is the backend running on port 8000?");
+      } else if (e.code === "ERR_NETWORK" || !e.response) {
+        setError("Cannot reach backend — start uvicorn on port 8000 first");
+      } else {
+        setError(e.response?.data?.detail || `Error ${e.response?.status}: Could not open target`);
+      }
     }
   };
 
   // Auto-open if a path was passed in (e.g. clicked from recent on main menu)
+  const autoOpened = useRef(false);
   useEffect(() => {
-    if (prefilledPath) handleOpen(prefilledPath);
-  }, [prefilledPath]);
+    if (prefilledPath && !autoOpened.current) {
+      autoOpened.current = true;
+      handleOpen(prefilledPath);
+    }
+  }, []);   // empty deps — run once only
 
   return (
     <div style={{ minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>

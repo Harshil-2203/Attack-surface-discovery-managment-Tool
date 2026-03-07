@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+
 # ── Import engines ────────────────────────────────────────────────────────────
 # Adjust these import paths to match YOUR project structure.
 # If your files are at:
@@ -14,9 +15,10 @@ from app.modules.crawl.engine import run_crawl
 from app.modules.subdomain.engine import run_subdomain_scan
 from app.modules.subdomain.mapper import analyze_relationships
 from app.routers import targets
+from app.routers import recon
+
 
 app = FastAPI(title="Attack Surface Discovery API")
-app.include_router(targets.router)
 
 # ── CORS — allow the Vite dev server (port 5173) ─────────────────────────────
 app.add_middleware(
@@ -27,7 +29,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+app.include_router(targets.router)
+app.include_router(recon.router)
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/scan/{domain}")

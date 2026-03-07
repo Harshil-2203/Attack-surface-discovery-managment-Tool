@@ -161,25 +161,36 @@ async def open_target(body: OpenTargetRequest):
 
     meta = _read_meta(folder)
 
-    # Load all scans (sorted oldest → newest)
+    # Load scans — only keep the latest one to avoid sending huge payloads
     scans = []
     scans_dir = tgt_dir / "scans"
     scans_dir.mkdir(exist_ok=True)
-    for f in sorted(scans_dir.glob("*.json")):
+    scan_files = sorted(scans_dir.glob("*.json"))
+    # Only load the latest scan (the one we actually need to restore state)
+    for f in scan_files[-1:]:
         try:
             with open(f, "r", encoding="utf-8") as fh:
                 scans.append(json.load(fh))
         except Exception:
             pass
 
-    # Load all crawls
+    # Load crawl metadata only (not full URL lists — can be 100k+ entries)
     crawls = []
     crawls_dir = tgt_dir / "crawls"
     crawls_dir.mkdir(exist_ok=True)
     for f in sorted(crawls_dir.glob("*.json")):
         try:
             with open(f, "r", encoding="utf-8") as fh:
-                crawls.append(json.load(fh))
+                raw = json.load(fh)
+            # Return summary only — skip the giant "urls" list
+            crawls.append({
+                "domain":     raw.get("domain", ""),
+                "saved_at":   raw.get("saved_at", ""),
+                "total_urls": raw.get("total_urls", len(raw.get("urls", []))),
+                "categories": raw.get("categories", {}),
+                # Include urls only if small enough
+                "urls": raw.get("urls", []) if len(raw.get("urls", [])) <= 5000 else [],
+            })
         except Exception:
             pass
 
@@ -281,3 +292,77 @@ async def save_crawl(body: SaveCrawlRequest):
     _write_meta(body.folder, meta)
 
     return {"ok": True, "file": filename, "total_urls": len(merged)}
+
+
+# ── Load latest crawl (called lazily when CrawlViewer opens) ─────────────────
+
+@router.get("/load-crawl")
+async def load_crawl(folder: str):
+    """
+    Return the latest crawl JSON without blocking the target open flow.
+    Frontend calls this lazily when the user navigates to the Crawl page.
+    """
+    tgt_dir = Path(folder)
+    if not tgt_dir.exists():
+        raise HTTPException(404, "Target folder not found")
+    crawls_dir = tgt_dir / "crawls"
+    crawls_dir.mkdir(exist_ok=True)
+    files = sorted(crawls_dir.glob("*.json"))
+    if not files:
+        return None
+    try:
+        with open(files[-1], "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(500, f"Could not read crawl file: {e}")
+
+
+# ── Save recon findings (subdomains discovered by recon tools) ────────────────
+
+class SaveReconFindingsRequest(BaseModel):
+    folder:     str
+    source:     str          # "tech" | "ports" | "dns" | "wayback" etc.
+    subdomains: list = []    # any new subdomains discovered
+    extra_file: str = ""     # optional filename to write inside recon/
+    extra_data: dict = {}    # optional extra JSON to save
+
+@router.post("/save-recon-findings")
+async def save_recon_findings(body: SaveReconFindingsRequest):
+    """
+    Merge recon-discovered subdomains into subdomains.txt
+    and optionally write a findings file under recon/.
+    """
+    tgt_dir = Path(body.folder)
+    if not tgt_dir.exists():
+        raise HTTPException(404, "Target folder not found")
+
+    new_subs = sorted(set(s.strip() for s in body.subdomains if s.strip()))
+
+    # Merge into subdomains.txt
+    merged_count = 0
+    if new_subs:
+        subs_file = tgt_dir / "subdomains.txt"
+        existing = set()
+        if subs_file.exists():
+            with open(subs_file, "r", encoding="utf-8") as f:
+                existing = {l.strip() for l in f if l.strip()}
+        merged = sorted(existing | set(new_subs))
+        with open(subs_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(merged))
+        merged_count = len(merged)
+
+        # Update meta
+        meta = _read_meta(body.folder)
+        meta["total_subdomains"] = merged_count
+        meta["updated_at"] = datetime.utcnow().isoformat()
+        _write_meta(body.folder, meta)
+
+    # Write extra findings file if provided
+    if body.extra_file and body.extra_data:
+        recon_dir = tgt_dir / "recon"
+        recon_dir.mkdir(exist_ok=True)
+        out = recon_dir / body.extra_file
+        with open(out, "w", encoding="utf-8") as f:
+            json.dump({"source": body.source, "saved_at": datetime.utcnow().isoformat(), **body.extra_data}, f, indent=2, default=str)
+
+    return {"ok": True, "new_subdomains": len(new_subs), "total_subdomains": merged_count}
