@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+// Inline theme — no dependency on theme.js
+function getTheme(mode = "dark") {
+  return {
+    bg:"#030507", panel:"#080c10", border:"#0f1923", text:"#e2e8f0",
+    muted:"#374151", accent:"#a78bfa", green:"#22c55e", red:"#ef4444",
+    orange:"#f97316", blue:"#60a5fa", cyan:"#67e8f9",
+  };
+}
 import GraphViewer from "./GraphViewer";
 import MetaViewer from "./MetaViewer";
 import Sidebar from "./Sidebar";
@@ -69,9 +77,9 @@ function App() {
       }
     }
 
-    // Restore crawl lazily — full crawl JSON is too big to include in open payload
-    if (data.meta?.target_folder && (data.crawls?.length > 0)) {
-      axios.get(`${API}/targets/load-crawl?folder=${encodeURIComponent(data.meta.target_folder)}`)
+    // Always attempt to restore crawl — backend returns null if none exist
+    if (data.meta?.target_folder) {
+      axios.get(`${API}/targets/load-crawl?folder=${encodeURIComponent(data.meta.target_folder)}&domain=${encodeURIComponent(data.meta.primary_domain || "")}`)
         .then(r => { if (r.data) setCrawlData(r.data); })
         .catch(() => {});
     }
@@ -201,8 +209,14 @@ function App() {
       const resp = await axios.get(`${API}/crawl/${target.trim()}`);
       setCrawlData(resp.data);
       if (targetMeta.target_folder) {
-        axios.post(`${API}/targets/save-crawl`, { folder: targetMeta.target_folder, domain: target.trim(), result: resp.data })
-          .then(r => saveRecent({ ...targetMeta, ...r.data })).catch(console.error);
+        try {
+          const saved = await axios.post(`${API}/targets/save-crawl`, {
+            folder: targetMeta.target_folder,
+            domain: target.trim(),
+            result: resp.data,
+          });
+          saveRecent({ ...targetMeta, ...saved.data });
+        } catch(e) { console.error("[ASDMT] save-crawl failed:", e.message); }
       }
     } catch (e) {
       setError("Crawl failed — check that gau, waybackurls and katana are installed.");

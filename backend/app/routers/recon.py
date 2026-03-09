@@ -59,6 +59,7 @@ class PortScanRequest(BaseModel):
 
 class JSAnalyzeRequest(BaseModel):
     js_urls: List[str]
+    max_files: int = 1000
 
 class NoteRequest(BaseModel):
     target_folder: str
@@ -75,7 +76,8 @@ class DiffRequest(BaseModel):
 @router.post("/techdetect")
 async def techdetect(body: SubdomainListRequest):
     detect_bulk, _ = _techdetect()
-    results = await detect_bulk(body.subdomains)
+    lookup_exploits = getattr(body, "lookup_exploits", True)
+    results = await detect_bulk(body.subdomains, lookup_exploits=lookup_exploits)
     return results
 
 @router.get("/techdetect/{subdomain:path}")
@@ -125,7 +127,7 @@ async def whois(domain: str):
 @router.post("/jsanalyze")
 async def jsanalyze(body: JSAnalyzeRequest):
     fn = _jsanalyzer()
-    return await fn(body.js_urls)
+    return await fn(body.js_urls, max_files=body.max_files)
 
 
 # ── Wayback Timeline ──────────────────────────────────────────────────────────
@@ -169,6 +171,26 @@ async def get_notes(target_folder: str):
     except Exception:
         return {}
 
+class DeleteNoteRequest(BaseModel):
+    target_folder: str
+    subdomain: str
+
+@router.delete("/notes")
+async def delete_note(body: DeleteNoteRequest):
+    notes_file = Path(body.target_folder) / "notes.json"
+    if not notes_file.exists():
+        return {"ok": False, "error": "No notes file found"}
+    try:
+        with open(notes_file) as f:
+            notes = json.load(f)
+        if body.subdomain not in notes:
+            return {"ok": False, "error": "Note not found"}
+        del notes[body.subdomain]
+        with open(notes_file, "w") as f:
+            json.dump(notes, f, indent=2)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 # ── Rescan Diff ───────────────────────────────────────────────────────────────
 
@@ -221,3 +243,21 @@ async def load_recon(target_folder: str, result_type: str):
     # Old flat format — strip saved_at if present
     envelope.pop("saved_at", None)
     return envelope
+
+
+# ── IDOR Parameter Analysis ───────────────────────────────────────────────────
+
+class IDORRequest(BaseModel):
+    urls: list   # list of crawled URLs
+
+@router.post("/idor")
+async def analyze_idor(body: IDORRequest):
+    """
+    Analyse crawled URLs and return ranked IDOR parameter candidates.
+    Filters out junk/tracking/display params automatically.
+    """
+    try:
+        from app.modules.idor_analyzer import analyze_idor_params
+    except ImportError:
+        from app.modules.idor_analyzer import analyze_idor_params
+    return analyze_idor_params(body.urls)

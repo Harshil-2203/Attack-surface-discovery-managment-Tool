@@ -174,22 +174,30 @@ async def open_target(body: OpenTargetRequest):
         except Exception:
             pass
 
-    # Load crawl metadata only (not full URL lists — can be 100k+ entries)
+    # Load crawl metadata — read only first 2KB per file (avoids 8s+ timeout on 131k URL files)
     crawls = []
     crawls_dir = tgt_dir / "crawls"
     crawls_dir.mkdir(exist_ok=True)
-    for f in sorted(crawls_dir.glob("*.json")):
+    import re as _re
+    def _crawl_ts_key(p):
+        m = _re.search(r"(\d{8}_\d{6})", p.name)
+        return m.group(1) if m else "00000000_000000"
+    crawl_files = sorted(crawls_dir.glob("*.json"), key=_crawl_ts_key)
+    for f in crawl_files:
         try:
             with open(f, "r", encoding="utf-8") as fh:
-                raw = json.load(fh)
-            # Return summary only — skip the giant "urls" list
+                head = fh.read(2048)
+            def _grab(key, _h=head):
+                m = _re.search('"' + key + r'"[ \t]*:[ \t]*"([^"]*)"', _h)
+                return m.group(1) if m else ""
+            def _grab_int(key, _h=head):
+                m = _re.search('"' + key + r'"[ \t]*:[ \t]*([0-9]+)', _h)
+                return int(m.group(1)) if m else 0
             crawls.append({
-                "domain":     raw.get("domain", ""),
-                "saved_at":   raw.get("saved_at", ""),
-                "total_urls": raw.get("total_urls", len(raw.get("urls", []))),
-                "categories": raw.get("categories", {}),
-                # Include urls only if small enough
-                "urls": raw.get("urls", []) if len(raw.get("urls", [])) <= 5000 else [],
+                "domain":     _grab("domain"),
+                "saved_at":   _grab("saved_at"),
+                "total_urls": _grab_int("total_urls") or _grab_int("total_unique"),
+                "file":       f.name,
             })
         except Exception:
             pass
@@ -265,56 +273,115 @@ async def save_crawl(body: SaveCrawlRequest):
     if not tgt_dir.exists():
         raise HTTPException(404, "Target folder not found")
 
-    filename = f"crawl_{body.domain.replace('.','_')}_{_ts()}.json"
+    filename = f"crawl_{body.domain.replace('.', '_')}_{_ts()}.json"
+    (tgt_dir / "crawls").mkdir(exist_ok=True)
+    crawl_data = {
+        "domain":     body.domain,
+        "saved_at":   datetime.utcnow().isoformat(),
+        "total_urls": len(body.result.get("urls", [])),
+        **body.result,
+    }
     with open(tgt_dir / "crawls" / filename, "w", encoding="utf-8") as f:
-        json.dump({
-            "domain":   body.domain,
-            "saved_at": datetime.utcnow().isoformat(),
-            **body.result
-        }, f, indent=2, default=str)
+        json.dump(crawl_data, f, indent=2, default=str)
 
-    # Merge into urls.txt
+    # Write urls.txt with ONLY this crawl's URLs (not merged across crawls)
+    # Each crawl run overwrites urls.txt so it always reflects the latest crawl
+    new_urls = body.result.get("urls", [])
     urls_file = tgt_dir / "urls.txt"
-    existing  = set()
-    if urls_file.exists():
-        with open(urls_file, "r", encoding="utf-8") as f:
-            existing = {l.strip() for l in f if l.strip()}
-    new_urls = set(body.result.get("urls", []))
-    merged   = sorted(existing | new_urls)
     with open(urls_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(merged))
+        f.write("\n".join(sorted(set(new_urls))))
 
     # Update meta
     meta = _read_meta(body.folder)
-    meta["crawl_count"]  += 1
-    meta["total_urls"]    = len(merged)
+    meta["crawl_count"]  = meta.get("crawl_count", 0) + 1
+    meta["total_urls"]    = len(new_urls)
+    meta["last_crawl_domain"] = body.domain
     meta["updated_at"]    = datetime.utcnow().isoformat()
     _write_meta(body.folder, meta)
 
-    return {"ok": True, "file": filename, "total_urls": len(merged)}
+    return {"ok": True, "file": filename, "total_urls": len(new_urls)}
 
 
 # ── Load latest crawl (called lazily when CrawlViewer opens) ─────────────────
 
 @router.get("/load-crawl")
-async def load_crawl(folder: str):
+async def load_crawl(folder: str, domain: str = ""):
     """
-    Return the latest crawl JSON without blocking the target open flow.
-    Frontend calls this lazily when the user navigates to the Crawl page.
+    Return the latest crawl JSON for the given domain (if provided),
+    or the globally latest crawl if no domain is specified.
+
+    Filtering by domain prevents a stale crawl from a DIFFERENT domain
+    being restored when a project is re-opened — e.g. a tryhackme crawl
+    being shown as the result for a flexifunnels project.
+
+    Sort key: timestamp suffix (YYYYMMDD_HHMMSS) embedded in the filename,
+    which is always reliable regardless of domain-name prefix ordering or
+    OS mtime changes caused by unrelated writes.
     """
     tgt_dir = Path(folder)
     if not tgt_dir.exists():
-        raise HTTPException(404, "Target folder not found")
+        return None
     crawls_dir = tgt_dir / "crawls"
     crawls_dir.mkdir(exist_ok=True)
-    files = sorted(crawls_dir.glob("*.json"))
-    if not files:
+
+    all_files = list(crawls_dir.glob("*.json"))
+    if not all_files:
         return None
+
+    import re as _re
+
+    def _ts_key(p):
+        m = _re.search(r"(\d{8}_\d{6})", p.name)
+        return m.group(1) if m else "00000000_000000"
+
+    # If a domain was supplied, filter to files whose CONTENT domain matches.
+    # Reading the first 512 bytes is enough to find the "domain" field which
+    # is always written first. This is more reliable than filename matching
+    # because filenames can contain other domain names from past bugs.
+    # Falls back to ALL files if nothing matches so UI never gets stuck.
+    if domain:
+        d_lower = domain.lower()
+        safe    = d_lower.replace(".", "_")   # flexifunnels_com  (for filename fallback)
+
+        # Primary: match by domain value inside the JSON
+        content_matches = []
+        for f in all_files:
+            try:
+                with open(f, "r", encoding="utf-8") as fh:
+                    head = fh.read(512)
+                m = _re.search(r'"domain"\s*:\s*"([^"]*)"', head)
+                if m and m.group(1).lower() == d_lower:
+                    content_matches.append(f)
+            except Exception:
+                pass
+
+        # Secondary fallback: filename contains domain (handles edge cases)
+        if not content_matches:
+            content_matches = [
+                f for f in all_files
+                if safe in f.name.lower() or d_lower in f.name.lower()
+            ]
+
+        candidate_files = content_matches if content_matches else all_files
+    else:
+        candidate_files = all_files
+
+    files_by_ts = sorted(candidate_files, key=_ts_key)
+    latest_file = files_by_ts[-1]
+
+    print(f"[load-crawl] {len(all_files)} total crawl files, "
+          f"{len(candidate_files)} matched domain='{domain}':")
+    for f in files_by_ts:
+        marker = " ← LATEST" if f == latest_file else ""
+        print(f"  {f.name}{marker}")
+
     try:
-        with open(files[-1], "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(latest_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
     except Exception as e:
-        raise HTTPException(500, f"Could not read crawl file: {e}")
+        print(f"[load-crawl] ERROR reading {latest_file.name}: {e}")
+        return None
 
 
 # ── Save recon findings (subdomains discovered by recon tools) ────────────────

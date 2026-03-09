@@ -418,7 +418,7 @@ function OpenTargetPanel({ onOpened, onBack, prefilledPath }) {
     setError("");
     console.log("[ASDMT] Opening target:", target);
     try {
-      const res = await axios.post(`${API}/targets/open`, { folder: target }, { timeout: 8000 });
+      const res = await axios.post(`${API}/targets/open`, { folder: target }, { timeout: 30000 });
       console.log("[ASDMT] Open success:", res.data?.meta?.target_id);
       saveRecent(res.data.meta);
       setLoading(false);
