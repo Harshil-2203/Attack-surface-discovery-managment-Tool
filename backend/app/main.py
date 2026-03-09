@@ -1,7 +1,6 @@
-
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 
 # ── Import engines ────────────────────────────────────────────────────────────
@@ -20,10 +19,26 @@ from app.routers import recon
 
 app = FastAPI(title="Attack Surface Discovery API")
 
-# ── CORS — allow the Vite dev server (port 5173) ─────────────────────────────
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Default: allow Vite dev server on common ports across all platforms.
+# Override with env var for team/VM setups:
+#   Windows:  set CORS_ORIGINS=http://192.168.1.5:5173 && uvicorn ...
+#   Linux:    CORS_ORIGINS=http://192.168.1.5:5173 uvicorn ...
+_env_origins = os.getenv("CORS_ORIGINS", "")
+if _env_origins:
+    _allowed_origins = [o.strip() for o in _env_origins.split(",") if o.strip()]
+else:
+    _allowed_origins = [
+        "http://localhost:5173",  # Vite default
+        "http://localhost:5174",  # Vite fallback port
+        "http://localhost:3000",  # CRA / other dev servers
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:3000",
+    ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

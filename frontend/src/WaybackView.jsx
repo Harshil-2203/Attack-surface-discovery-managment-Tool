@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import axios from "axios";
 
-const API = "http://localhost:8000";
+import API from "./Config";
 
 export default function WaybackView({ primaryDomain, subdomains, savedData, onDataChange }) {
   const [timeline, setTimeline]             = useState(savedData || null);

@@ -171,26 +171,6 @@ async def get_notes(target_folder: str):
     except Exception:
         return {}
 
-class DeleteNoteRequest(BaseModel):
-    target_folder: str
-    subdomain: str
-
-@router.delete("/notes")
-async def delete_note(body: DeleteNoteRequest):
-    notes_file = Path(body.target_folder) / "notes.json"
-    if not notes_file.exists():
-        return {"ok": False, "error": "No notes file found"}
-    try:
-        with open(notes_file) as f:
-            notes = json.load(f)
-        if body.subdomain not in notes:
-            return {"ok": False, "error": "Note not found"}
-        del notes[body.subdomain]
-        with open(notes_file, "w") as f:
-            json.dump(notes, f, indent=2)
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
 # ── Rescan Diff ───────────────────────────────────────────────────────────────
 
@@ -257,7 +237,7 @@ async def analyze_idor(body: IDORRequest):
     Filters out junk/tracking/display params automatically.
     """
     try:
-        from app.modules.idor_analyzer import analyze_idor_params
+        from app.modules.recon.idor_analyzer import analyze_idor_params
     except ImportError:
-        from app.modules.idor_analyzer import analyze_idor_params
+        from modules.recon.idor_analyzer import analyze_idor_params
     return analyze_idor_params(body.urls)

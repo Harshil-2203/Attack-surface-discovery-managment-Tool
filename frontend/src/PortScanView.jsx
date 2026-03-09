@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import axios from "axios";
 
-const API = "http://localhost:8000";
+import API from "./Config";
 
 const PORT_RISK = {
   21:"high",22:"low",23:"critical",25:"medium",53:"low",69:"medium",

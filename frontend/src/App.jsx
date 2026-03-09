@@ -20,8 +20,8 @@ import DNSView from "./DNSView";
 import JSAnalyzerView from "./JSAnalyzerView";
 import WaybackView from "./WaybackView";
 import NotesPanel from "./NotesPanel";
-
-const API = "http://localhost:8000";
+import IDORView from "./IDORView";
+import API from "./Config";
 
 function App() {
   // ── Target session ────────────────────────────────────────────────────────
@@ -48,6 +48,7 @@ function App() {
   const [whoisData,      setWhoisData]      = useState(null);
   const [jsResults,      setJsResults]      = useState(null);
   const [waybackData,    setWaybackData]    = useState(null);
+  const [idorResults,    setIdorResults]    = useState(null);
 
   const [error, setError] = useState("");
 
@@ -79,7 +80,7 @@ function App() {
 
     // Always attempt to restore crawl — backend returns null if none exist
     if (data.meta?.target_folder) {
-      axios.get(`${API}/targets/load-crawl?folder=${encodeURIComponent(data.meta.target_folder)}&domain=${encodeURIComponent(data.meta.primary_domain || "")}`)
+      axios.get(`${API}/targets/load-crawl?folder=${encodeURIComponent(data.meta.target_folder)}`)
         .then(r => { if (r.data) setCrawlData(r.data); })
         .catch(() => {});
     }
@@ -98,6 +99,7 @@ function App() {
       loadRecon("whois",   setWhoisData);
       loadRecon("js",      setJsResults);
       loadRecon("wayback", setWaybackData);
+      loadRecon("idor",    setIdorResults);
     }
   };
 
@@ -152,6 +154,7 @@ function App() {
   const handleWhoisData    = (d) => { setWhoisData(d);    saveRecon("whois",   d); };
   const handleJsResults    = (d) => { setJsResults(d);    saveRecon("js",      d); saveReconFindings("js",      d); };
   const handleWaybackData  = (d) => { setWaybackData(d);  saveRecon("wayback", d); saveReconFindings("wayback", d); };
+  const handleIdorResults  = (d) => { setIdorResults(d);  saveRecon("idor",    d); };
 
   // ── Gate: show TargetManager until a target is loaded ────────────────────
   if (!targetData) return <TargetManager onReady={handleTargetReady} />;
@@ -238,7 +241,7 @@ function App() {
           <span>TARGET: <span className="text-yellow-500">{targetMeta.org_name}</span></span>
           <span>DOMAIN: <span className="text-cyan-600">{targetMeta.primary_domain}</span></span>
           <span className="text-gray-700">{targetMeta.target_id}</span>
-          <button onClick={() => { setTargetData(null); setResults(null); setCrawlData(null); setMappingResult(null); setTechResults(null); setPortResults(null); setDnsResults(null); setWhoisData(null); setJsResults(null); setWaybackData(null); setViewMode("dashboard"); }}
+          <button onClick={() => { setTargetData(null); setResults(null); setCrawlData(null); setMappingResult(null); setTechResults(null); setPortResults(null); setDnsResults(null); setWhoisData(null); setJsResults(null); setWaybackData(null); setIdorResults(null); setViewMode("dashboard"); }}
             className="border border-gray-800 px-2 py-1 rounded text-gray-700 hover:text-red-500 transition">
             ✕ Close
           </button>
@@ -264,6 +267,7 @@ function App() {
             dnsReady={!!dnsResults}
             jsReady={!!jsResults}
             waybackReady={!!waybackData}
+            idorReady={!!idorResults}
           />
         </aside>
 
@@ -398,6 +402,14 @@ function App() {
             )}
             {viewMode === "notes" && (
               <NotesPanel targetFolder={targetMeta.target_folder} subdomains={results?.subdomains || []} />
+            )}
+            {viewMode === "idor" && (
+              <IDORView
+                crawlData={crawlData}
+                savedResults={idorResults}
+                onResultsChange={handleIdorResults}
+                targetFolder={targetMeta.target_folder}
+              />
             )}
 
           </div>

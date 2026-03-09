@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import axios from "axios";
 
-const API = "http://localhost:8000";
+import API from "./Config";
 
 const CAT_META = {
   "CMS":               { color: "#60a5fa", bg: "#0a1020", border: "#1e3a5f" },

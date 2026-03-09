@@ -9,6 +9,7 @@ const ITEMS = [
   { key: "tech",      label: "Tech Detect", icon: "⚙",  group: "RECON",     requiresScan: true },
   { key: "ports",     label: "Port Scan",   icon: "⬡",  group: "RECON",     requiresScan: true },
   { key: "dns",       label: "DNS / WHOIS", icon: "⊛",  group: "RECON",     requiresScan: true },
+  { key: "idor",      label: "IDOR Params", icon: "\?", group: "WORKFLOW",  requiresScan: false, requiresCrawl: true },
   { key: "crawl",     label: "Crawl URLs",  icon: "⌖",  group: "CRAWL",     requiresScan: false, isCrawl: true },
   { key: "js",        label: "JS Analyzer", icon: "{}",  group: "CRAWL",    requiresScan: false, requiresCrawl: true },
   { key: "wayback",   label: "Timeline",    icon: "◷",  group: "INTEL",     requiresScan: false },
@@ -26,7 +27,7 @@ const GROUP_ACCENT = {
 export default function Sidebar({
   viewMode, setViewMode, scanDone, mappingReady, mappingLoading,
   crawlData, crawlLoading, theme, onToggleTheme,
-  techReady, portReady, dnsReady, jsReady, waybackReady,
+  techReady, portReady, dnsReady, jsReady, waybackReady, idorReady,
 }) {
   const groups = [...new Set(ITEMS.map(i => i.group))];
 
@@ -91,6 +92,8 @@ export default function Sidebar({
                   }}>{crawlData.total_unique?.toLocaleString()}</span>
                 );
               else if (item.key === "js" && jsReady)
+                badge = <span style={{ marginLeft: "auto", fontSize: 10, color: "#4ade80" }}>✓</span>;
+              else if (item.key === "idor" && idorReady)
                 badge = <span style={{ marginLeft: "auto", fontSize: 10, color: "#4ade80" }}>✓</span>;
               else if (item.key === "js" && crawlData?.categories?.js_files?.length)
                 badge = (
@@ -168,7 +171,7 @@ export default function Sidebar({
 
       {/* Bottom */}
       <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid #0f1923" }}>
-        <button
+        {/* <button
           onClick={onToggleTheme}
           style={{
             display: "flex", alignItems: "center", gap: 8,
@@ -185,7 +188,7 @@ export default function Sidebar({
           <span style={{ fontFamily: "monospace", fontSize: 11, color: "#374151" }}>
             {theme === "dark" ? "Light Mode" : "Dark Mode"}
           </span>
-        </button>
+        </button> */}
 
         {!scanDone && (
           <div style={{

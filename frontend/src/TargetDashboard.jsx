@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
-const API = "http://localhost:8000";
+import API from "./Config";
 
 export default function TargetDashboard({ target, results, crawlData, scans, crawls, onNavigate }) {
   const [diff, setDiff]         = useState(null);

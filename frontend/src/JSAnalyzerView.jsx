@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import axios from "axios";
 
-const API = "http://localhost:8000";
+import API from "./Config";
 
 const SEV = {
   critical: { color:"#ef4444", bg:"#0f0303", border:"#7f1d1d", dim:"#3b1f1f" },

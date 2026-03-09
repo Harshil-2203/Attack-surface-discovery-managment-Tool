@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
-const API = "http://localhost:8000";
+import API from "./Config";
 const RECENT_KEY = "asdmt_recent_targets";
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ function FolderInput({ value, onChange, onValidate, status }) {
           type="text"
           value={value}
           onChange={e => onChange(e.target.value)}
-          placeholder={navigator.platform.includes("Win") ? "C:\\Targets\\Acme" : "/home/user/targets/acme"}
+          placeholder={/win/i.test(navigator.userAgent) ? "C:\\Targets\\Acme" : /mac/i.test(navigator.userAgent) ? "/Users/analyst/targets/acme" : "/home/analyst/targets/acme"}
           style={{
             flex: 1, background: "#000",
             border: `1px solid ${status === "ok" ? "#166534" : status === "err" ? "#7f1d1d" : "#1f2937"}`,
