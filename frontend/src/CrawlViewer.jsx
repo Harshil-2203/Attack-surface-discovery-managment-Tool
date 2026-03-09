@@ -1,15 +1,14 @@
 import React, { useState } from "react";
 
 const CAT = {
-  parameters:      { icon: "🎯", label: "Parameters",      color: "text-yellow-300", border: "border-yellow-800", bg: "bg-yellow-900/10", badge: "bg-yellow-700" },
-  api_paths:       { icon: "🔌", label: "API Paths",       color: "text-blue-300",   border: "border-blue-800",   bg: "bg-blue-900/10",   badge: "bg-blue-700"   },
-  admin_paths:     { icon: "🔐", label: "Admin Paths",     color: "text-red-300",    border: "border-red-800",    bg: "bg-red-900/10",    badge: "bg-red-700"    },
-  js_files:        { icon: "📜", label: "JS Files",        color: "text-purple-300", border: "border-purple-800", bg: "bg-purple-900/10", badge: "bg-purple-700" },
-  sensitive_files: { icon: "⚠️", label: "Sensitive Files", color: "text-orange-300", border: "border-orange-800", bg: "bg-orange-900/10", badge: "bg-orange-700" },
-  endpoints:       { icon: "🌐", label: "Endpoints",       color: "text-cyan-300",   border: "border-cyan-900",   bg: "bg-cyan-900/10",   badge: "bg-cyan-800"   },
-  other:           { icon: "📦", label: "Other",           color: "text-gray-400",   border: "border-gray-700",   bg: "bg-gray-800/20",   badge: "bg-gray-700"   },
+  parameters:      { icon: "⌘", label: "Parameters",      color: "text-yellow-300", border: "border-yellow-800", bg: "bg-yellow-900/10", badge: "bg-yellow-700" },
+  api_paths:       { icon: "⌬", label: "API Paths",       color: "text-blue-300",   border: "border-blue-800",   bg: "bg-blue-900/10",   badge: "bg-blue-700"   },
+  admin_paths:     { icon: "⛨", label: "Admin Paths",     color: "text-red-300",    border: "border-red-800",    bg: "bg-red-900/10",    badge: "bg-red-700"    },
+  js_files:        { icon: "{}", label: "JS Files",       color: "text-purple-300", border: "border-purple-800", bg: "bg-purple-900/10", badge: "bg-purple-700" },
+  sensitive_files: { icon: "✺", label: "Sensitive Files", color: "text-orange-300", border: "border-orange-800", bg: "bg-orange-900/10", badge: "bg-orange-700" },
+  endpoints:       { icon: "⊚", label: "Endpoints",       color: "text-cyan-300",   border: "border-cyan-900",   bg: "bg-cyan-900/10",   badge: "bg-cyan-800"   },
+  other:           { icon: "◈", label: "Other",           color: "text-gray-400",   border: "border-gray-700",   bg: "bg-gray-800/20",   badge: "bg-gray-700"   },
 };
-
 export default function CrawlViewer({ defaultDomain, subdomains = [], crawlData, crawlLoading, onCrawl }) {
   const [mode, setMode]           = useState("domain");   // "domain" | "subdomain"
   const [customDomain, setCustomDomain] = useState(defaultDomain || "");
@@ -58,9 +57,9 @@ export default function CrawlViewer({ defaultDomain, subdomains = [], crawlData,
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
 
         <div className="flex items-center gap-2">
-          <span className="text-xl">🕷️</span>
+          {/* <span className="text-xl">🕸</span> */}
           <h3 className="text-base font-semibold text-purple-300">URL Crawler</h3>
-          <span className="text-xs text-gray-600 ml-1">— GAU + Waybackurls + Katana</span>
+          {/* <span className="text-xs text-gray-600 ml-1">— GAU + Waybackurls + Katana</span> */}
         </div>
 
         {/* Mode tabs */}
@@ -129,7 +128,7 @@ export default function CrawlViewer({ defaultDomain, subdomains = [], crawlData,
           disabled={!canStart}
           className="w-full py-3 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-800 disabled:text-gray-600 rounded-xl font-semibold text-white transition active:scale-95 text-sm"
         >
-          {crawlLoading ? "Crawling... (may take 1–2 min)" : "▶  Start Crawl"}
+          {crawlLoading ? "Crawling... (may take 1–2 min)" : "Start Crawl"}
         </button>
 
         {crawlLoading && (

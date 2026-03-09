@@ -36,24 +36,24 @@ export default function TargetDashboard({ target, results, crawlData, scans, cra
   const totalFound = results?.total_found || latestScan?.total_found || 0;
 
   const STAT_CARDS = [
-    { label: "Scans Run",         value: scans?.length || 0,     color: "#4ade80", icon: "🔍" },
-    { label: "Subdomains Found",  value: totalFound,              color: "#67e8f9", icon: "🌐" },
-    { label: "Alive",             value: aliveCount,              color: "#4ade80", icon: "✅" },
-    { label: "Crawls Run",        value: crawls?.length || 0,     color: "#d8b4fe", icon: "🕷️" },
+    { label: "Scans Run",         value: scans?.length || 0,     color: "#4ade80", icon: "⌕" },
+    { label: "Subdomains Found",  value: totalFound,              color: "#67e8f9", icon: "⊚" },
+    { label: "Alive",             value: aliveCount,              color: "#4ade80", icon: "✓" },
+    { label: "Crawls Run",        value: crawls?.length || 0,     color: "#d8b4fe", icon: "🕷" },
     { label: "URLs Collected",    value: totalUrls.toLocaleString(), color: "#fcd34d", icon: "🔗" },
-    { label: "Target Age",        value: target?.created_at ? Math.floor((Date.now() - new Date(target.created_at)) / 86400000) + "d" : "—", color: "#fb923c", icon: "📅" },
+    { label: "Target Age",        value: target?.created_at ? Math.floor((Date.now() - new Date(target.created_at)) / 86400000) + "d" : "—", color: "#fb923c", icon: "◷" },
   ];
-
+  
   const QUICK_ACTIONS = [
-    { label: "List View",    view: "list",   icon: "📋", color: "#166534", disabled: !results },
-    { label: "Graph Map",    view: "graph",  icon: "🕸️", color: "#1e40af", disabled: !results },
-    { label: "Meta Info",    view: "meta",   icon: "🌐", color: "#0891b2", disabled: !results },
-    { label: "Crawl URLs",   view: "crawl",  icon: "🕷️", color: "#7e22ce", disabled: false },
-    { label: "Port Scan",    view: "ports",  icon: "🔌", color: "#b45309", disabled: !results },
-    { label: "Tech Detect",  view: "tech",   icon: "⚙️", color: "#1d4ed8", disabled: !results },
-    { label: "DNS Records",  view: "dns",    icon: "📡", color: "#065f46", disabled: !results },
-    { label: "JS Analyzer",  view: "js",     icon: "📜", color: "#6b21a8", disabled: !crawlData },
-    { label: "Timeline",     view: "wayback",icon: "⏳", color: "#78350f", disabled: false },
+    { label: "Graph Map",    view: "graph",  icon: "◈", color: "#1e40af", disabled: !results },
+    { label: "List View",    view: "list",   icon: "≡", color: "#166534", disabled: !results },
+    { label: "Meta Info",    view: "meta",   icon: "◎", color: "#0891b2", disabled: !results },
+    { label: "Crawl URLs",   view: "crawl",  icon: "⌖", color: "#7e22ce", disabled: false },
+    { label: "Port Scan",    view: "ports",  icon: "⬡", color: "#b45309", disabled: !results },
+    { label: "Tech Detect",  view: "tech",   icon: "⛭", color: "#1d4ed8", disabled: !results },
+    { label: "DNS Records",  view: "dns",    icon: "⊛", color: "#065f46", disabled: !results },
+    { label: "JS Analyzer",  view: "js",     icon: "{}", color: "#6b21a8", disabled: !crawlData },
+    { label: "Timeline",     view: "wayback",icon: "◷", color: "#78350f", disabled: false },
   ];
 
   return (
